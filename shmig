@@ -168,7 +168,7 @@ __generic_checker(){
 
   [[ -x $exe ]] || die "${BOLD}${LYELLOW}${exe##*[/\\]}${CLEAR} ($exe) is ${RED}not available. Ensure that the ${TYPE} client is installed${CLEAR}"
 
-  TMPF=$(((RANDOM<<15)|RANDOM)).$$.out
+  TMPF=`mktemp`
   rm -f $TMPF
   "${TYPE}_cli" "$show" > $TMPF
   if [ $? -ne 0 ]
@@ -372,7 +372,7 @@ sqlite3_status(){
 sqlite3_up_text() {
 cat >> $1 << EOF
 BEGIN;
-	PRAGMA foreign_keys = ON;
+    PRAGMA foreign_keys = ON;
 
 COMMIT;
 EOF
@@ -431,15 +431,15 @@ migration_section(){
   local result="0"
 
   sed -n -e '/'"$since"'/,/'"$till"'/p' "$fname"\
-	 | grep -v "^--" \
-	 > "$tmpfile"
+     | grep -v "^--" \
+     > "$tmpfile"
 
   if grep -E -q '[^ \t]' "$tmpfile"
   then
     if [ "$MODE" = "DEFAULT_SQL_MODE" ]
     then
-    cat "$tmpfile"
-  else
+        cat "$tmpfile"
+    else
         (echo " SET SESSION sql_mode='$MODE'; "; cat "$tmpfile")
     fi
   else
