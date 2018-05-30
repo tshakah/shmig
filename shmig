@@ -12,6 +12,7 @@ SCHEMA_TABLE="shmig_version"
 CONFIG_EXPLICITLY_SET="0"
 ASK_PASSWORD="0"
 MIGRATIONS="./migrations"
+MODE="DEFAULT_SQL_MODE"
 
 MYSQL=`which mysql`
 PSQL=`which psql`
@@ -88,6 +89,9 @@ Where options are:
 
   -m DIR
       files with migrations (default is $MIGRATIONS)
+
+  -M MODE
+      sql mode for override
 
   -d DATABASE
       database name
@@ -432,7 +436,12 @@ migration_section(){
 
   if grep -E -q '[^ \t]' "$tmpfile"
   then
+    if [ "$MODE" = "DEFAULT_SQL_MODE" ]
+    then
     cat "$tmpfile"
+  else
+        (echo " SET SESSION sql_mode='$MODE'; "; cat "$tmpfile")
+    fi
   else
     result="1"
   fi
@@ -617,7 +626,7 @@ down(){
 # parse command line and store variables in _VAR to overwrite config values
 # later
 
-while getopts hc:t:m:d:l:H:p:P:s:a:AVC: arg
+while getopts hc:t:m:d:l:H:p:P:s:a:M:AVC arg
 do
   case $arg in
     h)   usage 0                   ;;
@@ -635,6 +644,7 @@ do
     V)   version                   ;;
     A)   ASK_PASSWORD="1"          ;;
     C)   _COLOR="$OPTARG"          ;;
+    M)   _MODE="$OPTARG"           ;;
     ?)   exit 1                    ;;
   esac
 done
@@ -670,6 +680,7 @@ fi
 [[ -n $_SCHEMA_TABLE ]] && SCHEMA_TABLE="$_SCHEMA_TABLE"
 [[ -n $_ARGS         ]] && ARGS="$_ARGS"
 [[ -n $_COLOR        ]] && COLOR="$_COLOR"
+[[ -n "${_MODE+1}"   ]] && MODE="$_MODE"
 
 # figure out color policy
 case "$COLOR" in
