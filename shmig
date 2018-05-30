@@ -491,16 +491,16 @@ ${TYPE}_down_text $fname
 # prints N pending migrations sorted by version in ascending order
 # if N is not given then all printed
 pending_migrations(){
-  local last=$("${TYPE}_previous_versions" 1)
-  last="${last:-0}"
+  local applied=$(echo $("${TYPE}_previous_versions") | sed 's/ /|/g')
 
-  find_migrations | sort -t- -k1nr | awk -v "limit=${1:--1}" -v "last=$last" -F/ \
-    'limit&&$NF~/^[0-9]+-.*\.sql$/&&int($NF)>last{
-      print;
-      --limit;
-      if(!limit)
-        exit;
-    }'
+  local regex='^'$MIGRATIONS'/((?!'$applied')[0-9]+-.*\.sql)$'
+
+  if [ ! -z "$1" ];
+    then
+      find_migrations | grep -P "$regex" -m $1 | sort -t- -k1nr
+    else
+      find_migrations | grep -P "$regex" | sort -t- -k1nr
+  fi
 }
 
 # prints N previous migration file names.
