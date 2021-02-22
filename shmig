@@ -4,7 +4,11 @@
 # Copyright 2013 naquad <naquad@gmail.com>
 # Copyright 2014 mbucciarelli <mkbucc@gmail.com>
 
+# shellcheck disable=SC2155
+# See issue #61.
+
 # default values for variables
+
 
 ME="${0##*[/\\]}"
 CONFIG="./shmig.conf"
@@ -14,9 +18,9 @@ ASK_PASSWORD="0"
 MIGRATIONS="./migrations"
 MODE="DEFAULT_SQL_MODE"
 
-MYSQL=`which mysql`
-PSQL=`which psql`
-SQLITE3=`which sqlite3`
+MYSQL=$(command -v mysql)
+PSQL=$(command -v psql)
+SQLITE3=$(command -v sqlite3)
 
 UP_MARK="====  UP  ===="
 DOWN_MARK="==== DOWN ===="
@@ -29,26 +33,19 @@ COLOR="never"
 # we assume color output is not used
 
 RED=""
-GREEN=""
-YELLOW=""
-BLUE=""
-MAGENTA=""
 CYAN=""
-LGRAY=""
-DGRAY=""
 LRED=""
 LGREEN=""
 LYELLOW=""
 LBLUE=""
 LMAGENTA=""
 LCYAN=""
-LWHITE=""
 CLEAR=""
 BOLD=""
 
 # some helpers
 warn(){
-  echo -e "$ME: $@" >&2
+  echo -e "$ME: $*" >&2
 }
 
 die(){
@@ -170,8 +167,7 @@ __generic_checker(){
 
   TMPF=`mktemp`
   rm -f $TMPF
-  "${TYPE}_cli" "$show" > $TMPF
-  if [ $? -ne 0 ]
+  if ! "${TYPE}_cli" "$show" > $TMPF
   then
     rm -f $TMPF
     return 1
@@ -225,8 +221,12 @@ mysql_cli(){
 
   if [[ $# -ne 0 ]]
   then
-    "$MYSQL" $args <<< $*
+    # shellcheck disable=2086
+    # Quoting $args breaks script.
+    "$MYSQL" $args <<< "$@"
   else
+    # shellcheck disable=2086
+    # Quoting $args breaks script.
     "$MYSQL" $args
   fi
 }
@@ -254,7 +254,7 @@ mysql_status(){
 }
 
 mysql_up_text() {
-cat >> $1 << EOF
+cat >> "$1" << EOF
 BEGIN;
 
 COMMIT;
@@ -263,7 +263,7 @@ EOF
 
 
 mysql_down_text() {
-cat >> $1 << EOF
+cat >> "$1" << EOF
 BEGIN;
 
 COMMIT;
@@ -285,8 +285,12 @@ postgresql_cli(){
 
   if [[ $# -ne 0 ]]
   then
+    # shellcheck disable=2086
+    # Quoting $args breaks script.
     "$PSQL" $args -c "$*"
   else
+    # shellcheck disable=2086
+    # Quoting $args breaks script.
     "$PSQL" $args
   fi
 }
@@ -315,7 +319,7 @@ postgresql_status(){
 }
 
 postgresql_up_text() {
-cat >> $1 << EOF
+cat >> "$1" << EOF
 BEGIN;
 
 COMMIT;
@@ -324,7 +328,7 @@ EOF
 
 
 postgresql_down_text() {
-cat >> $1 << EOF
+cat >> "$1" << EOF
 BEGIN;
 
 COMMIT;
@@ -340,8 +344,12 @@ sqlite3_cli(){
 
   if [[ $# -ne 0 ]]
   then
-    "$SQLITE3" $args <<< $*
+    # shellcheck disable=2086
+    # Quoting $args break script.
+    "$SQLITE3" $args <<< "$@"
   else
+    # shellcheck disable=2086
+    # Quoting $args break script.
     "$SQLITE3" $args
   fi
 }
@@ -370,7 +378,7 @@ sqlite3_status(){
 }
 
 sqlite3_up_text() {
-cat >> $1 << EOF
+cat >> "$1" << EOF
 BEGIN;
     PRAGMA foreign_keys = ON;
 
@@ -379,7 +387,7 @@ EOF
 }
 
 sqlite3_down_text() {
-cat >> $1 << EOF
+cat >> "$1" << EOF
 BEGIN;
 
 COMMIT;
@@ -427,7 +435,7 @@ migration_section(){
   local fname="$1"
   local since="^-- $(sed_quote "$2")\$"
   local till="^-- $(sed_quote "$3")\$"
-  local tmpfile="${TMPDIR:-/tmp}/shmig-migration-section.$$.${RANDOM}.sql"
+  local tmpfile="${TMPDIR:-/tmp/}shmig-migration-section.$$.${RANDOM}.sql"
   local result="0"
 
   sed -n -e '/'"$since"'/,/'"$till"'/p' "$fname"\
@@ -471,7 +479,7 @@ create(){
 
 EOF
 
-${TYPE}_up_text $fname
+"${TYPE}_up_text" "$fname"
 
 cat >> "$fname" << EOF
 
@@ -479,7 +487,7 @@ cat >> "$fname" << EOF
 
 EOF
 
-${TYPE}_down_text $fname
+"${TYPE}_down_text" "$fname"
 
   local retval="$?"
 
@@ -510,13 +518,14 @@ pending_migrations(){
 previous_migrations(){
   local version=""
 
-  while read version
+  while read -r version
   do
     local migration=$(find_migrations -name "$version-*.sql")
     [[ -z $migration ]] && die "${LRED}migration version ${LYELLOW}$version ${LRED}can't be found${CLEAR}"
     echo "$migration"
   done < <("${TYPE}_previous_versions" "$1")
 
+  # shellcheck disable=SC2181
   [[ $? -ne 0 ]] && exit 1
 }
 
@@ -525,7 +534,7 @@ pending(){
   [[ $# -ne 0 ]] && die "${LRED}pending takes no arguments${CLEAR}"
 
   local fname=""
-  pending_migrations | while read fname
+  pending_migrations "$@" | while read -r fname
   do
     echo "${fname##*[/\\]}"
   done
@@ -583,7 +592,7 @@ migrate(){
   is_numeric "$stopver" || die "${LYELLOW}TILL${LRED} should be numeric${CLEAR}"
 
   local fname=""
-  while read fname
+  while read -r fname
   do
     local version=$(migration_version "$fname")
     local name=$(migration_name "$fname")
@@ -597,18 +606,24 @@ migrate(){
       esac
     fi
 
+    local error_tmpfile="${TMPDIR:-/tmp/}shmig-migration-error.${RANDOM}.tmp"
     # pipe section from migration and version change SQL into CLI client of specified type
     (
       echo -en "$ME: $message '${LMAGENTA}${name}${CLEAR}'\t(${LBLUE}$version${LBLUE}${CLEAR})... " >&2
 
       migration_section "$fname" "$since" "$till" || die "\n  ${LRED}migration in '${LYELLOW}$fname${LRED}' contains no section ${CYAN}$sname${CLEAR}"
       "$version_change_sql" "$version"
-
-      echo -e "${BOLD}${LGREEN}done${CLEAR}" >&2
-    ) | "${TYPE}_cli"
+    ) | if "${TYPE}_cli" &> "${error_tmpfile}"; then
+          echo -e "${BOLD}${LGREEN}done${CLEAR}" >&2
+        else
+          echo -e "${BOLD}${LRED}error${CLEAR}" >&2
+          cat "${error_tmpfile}"
+          rm "${error_tmpfile}"
+          exit 1
+        fi
 
     [[ ${PIPESTATUS[0]} -eq 0 && ${PIPESTATUS[1]} -eq 0 ]] || exit 1
-  done < <("$src" $steps)
+  done < <("$src" "$steps")
 }
 
 # a wrapper for migrate that applies migrations
@@ -648,7 +663,7 @@ do
     ?)   exit 1                    ;;
   esac
 done
-shift $(($OPTIND - 1))
+shift $((OPTIND - 1))
 
 # if config exists
 if [[ -e $CONFIG ]]
@@ -656,7 +671,8 @@ then
   # any error in configuration file should cause failure
   # to avoid potential database corruption
   trap 'die "Configuration failed"' ERR
-  source "$CONFIG"
+  # shellcheck source=/dev/null
+  . "$CONFIG"
   # reset handler
   trap - ERR
 elif [[ $CONFIG_EXPLICITLY_SET -eq 1 ]]
@@ -666,7 +682,20 @@ then
   die "Configuration file '$CONFIG' doesn't exist"
 fi
 
-[[ $ASK_PASSWORD -eq 1 ]] && read -s -p "Password: " _PASSWORD
+# Include local config, if available (e.g., shmig.local.conf
+LOCAL_CONFIG="${CONFIG%.*}.local.${CONFIG##*.}"
+if [ -e "$LOCAL_CONFIG" ]; then
+  # any error in configuration file should cause failure
+  # to avoid potential database corruption
+  trap 'die "Local configuration failed"' ERR
+  # shellcheck source=/dev/null
+  . "$LOCAL_CONFIG"
+  # reset handler
+  trap - ERR
+fi
+
+
+[[ $ASK_PASSWORD -eq 1 ]] && read -r -s -p "Password: " _PASSWORD
 
 # options from command line have higher priority than configuration
 # file. if they were given then we overwrite values
@@ -703,20 +732,13 @@ esac
 if [[ $COLOR -eq 0 ]]
 then
   RED="\e[31m"
-  GREEN="\e[32m"
-  YELLOW="\e[33m"
-  BLUE="\e[34m"
-  MAGENTA="\e[35m"
   CYAN="\e[36m"
-  LGRAY="\e[37m"
-  DGRAY="\e[90m"
   LRED="\e[91m"
   LGREEN="\e[92m"
   LYELLOW="\e[93m"
   LBLUE="\e[94m"
   LMAGENTA="\e[95m"
   LCYAN="\e[96m"
-  LWHITE="\e[97m"
   BOLD="\e[1m"
   CLEAR="\e[0m"
 fi
